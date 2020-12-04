@@ -31,7 +31,7 @@ void NaiveMovingAverageFilter(
 					size_t numElements,
 				    __global float *output,
 					__constant float *cFilterWeights, 
-					uint filterLength)
+					size_t filterLength)
 
 {
 	size_t blockIdx = get_group_id(0);
@@ -62,27 +62,27 @@ __kernel
 __attribute__((reqd_work_group_size(LOCAL_XRES, 1, 1)))
 void MovingAverageFilter(
 				    __global float *input,
-					long numElements,
+					size_t numElements,
 				    __global float *output,
 					__constant float *cFilterWeights, 
-					uint filterLength)
+					size_t filterLength)
 
 {
     size_t halfFilterLength = filterLength / 2;
 
-	__local float sInput[(LOCAL_XRES + TAP_SIZE - 1)];
+	__local float sInput[(LOCAL_XRES + TAP_SIZE -1)];
 
     size_t blockIdx = get_group_id(0);
 	size_t blockDimx = get_local_size(0);
 	size_t threadIdx = get_local_id(0);
 
-    long idx = blockIdx * blockDimx + threadIdx;
+    size_t idx = blockIdx * blockDimx + threadIdx;
 
     sInput[threadIdx + halfFilterLength] = (idx < numElements) ? input[idx] : 0.0f;
 
-    if (threadIdx < halfFilterLength)
+	if (threadIdx < halfFilterLength)
     {
-		sInput[threadIdx] = (idx - halfFilterLength > 0) ? input[idx - halfFilterLength] : 0.0f;
+		sInput[threadIdx] = ((int)idx - (int)halfFilterLength > 0) ? input[idx - halfFilterLength] : 0.0f;
     }
 
     if (threadIdx >= blockDimx - halfFilterLength)
@@ -91,8 +91,6 @@ void MovingAverageFilter(
     }
 
     barrier(CLK_LOCAL_MEM_FENCE);
-
-    //long windowIdx = idx - halfFilterLength;
 
     if (idx >= numElements)
 		return;

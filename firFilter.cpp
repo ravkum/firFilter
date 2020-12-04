@@ -163,7 +163,7 @@ bool buildKernels(cl_context oclContext, cl_device_id oclDevice, cl_kernel *naiv
 	* printed to console                                                      *
 	**************************************************************************/
 	char option[256];
-	sprintf(option, "-g -DTAP_SIZE=%d -DLOCAL_XRES=%d", filterLength, LOCAL_XRES);
+	sprintf(option, "-DTAP_SIZE=%d -DLOCAL_XRES=%d", filterLength, LOCAL_XRES);
 
 	err = clBuildProgram(programFirFilter, 1, &(oclDevice), option, NULL, NULL);
 	free(source);
@@ -200,34 +200,34 @@ void usage(const char *prog)
 {
 	printf("Usage: %s \n\t", prog);
 	printf("\n\t[-zeroCopy (0 | 1)] //0 (default) - Device buffer, 1 - zero copy buffer\n\t[-filtSize (Tap size)]\n\t");
-	printf("\n\t[-blockSize (64/128/512)]\n\t");
+	printf("\n\t[-numElements (220000)]\n\t");
+	printf("\n\t[-opt (0 | 1)]\n\t");
 	printf("\n\t[-batchSize (number of blocks per batch: how much data to be processed in an interval)]\n\t");
 	printf("\n\t[-verify (0 | 1]\n\t");
 	printf("]\n\t[-h (help)]\n\n");
-	printf("Example: To run 5X5 filter on 8 bit/channel input image, run");
-	printf("\n\t %s p -filtSize 335 -useLds 0 -zeroCopy 0 -reduceOverhead 1\n", prog);
 }
 
 int main(int argc, char **argv)
 {
 	DeviceInfo infoDeviceOcl;
-	int zeroCopy = 0;
-	int dataTransfer;
+	bool zeroCopy = true;
+	bool dataTransfer = !zeroCopy;
+	int iteration = 1;
 
 	cl_mem inputSignal, outputSignal, filterData;
 	cl_int err;
 	cl_kernel naiveFirFilterKernel, optFirFilterKernel;
+	cl_kernel *kernel;
+	bool useOptKernel = true;
 
-    cl_uint filterLength = 335;
-	size_t blockSize = 512;
-	size_t batchSize = 10;
-	cl_long numElements = blockSize * batchSize;// 512;// 600 * 1024 * 1024;
+	size_t filterLength = 335;
+	size_t numElements = 2120000;// 600 * 1024 * 1024;
 
-	bool verify = true;
-	 
+	bool verify = false;
+
 	std::vector<float> data;
-    std::vector<float> reference;
-    std::vector<float> result(numElements, 0.0f);
+	std::vector<float> reference;
+	std::vector<float> result(numElements, 0.0f);
 
 	/***************************************************************************
 	* Processing the command line arguments                                   *
@@ -250,17 +250,11 @@ int main(int argc, char **argv)
 			tmpArgc--;
 			zeroCopy = atoi(tmpArgv[1]);
 		}
-		else if (strncmp(tmpArgv[1], "-batchSize", 10) == 0)
+		else if (strncmp(tmpArgv[1], "-numElements", 10) == 0)
 		{
 			tmpArgv++;
 			tmpArgc--;
-			batchSize = atoi(tmpArgv[1]);
-		}
-		else if (strncmp(tmpArgv[1], "-blockSize", 10) == 0)
-		{
-			tmpArgv++;
-			tmpArgc--;
-			blockSize = atoi(tmpArgv[1]);
+			numElements = atoi(tmpArgv[1]);
 		}
 		else if (strncmp(tmpArgv[1], "-verify", 7) == 0)
 		{
@@ -268,11 +262,24 @@ int main(int argc, char **argv)
 			tmpArgc--;
 			verify = atoi(tmpArgv[1]);
 		}
+		else if (strncmp(tmpArgv[1], "-opt", 4) == 0)
+		{
+			tmpArgv++;
+			tmpArgc--;
+			useOptKernel = atoi(tmpArgv[1]);
+		}
+		else if (strncmp(tmpArgv[1], "-iter", 5) == 0)
+		{
+			tmpArgv++;
+			tmpArgc--;
+			iteration = atoi(tmpArgv[1]);
+		}
 		else if (strncmp(tmpArgv[1], "-h", 2) == 0)
 		{
 			usage(argv[0]);
 			exit(1);
 		}
+
 		else
 		{
 			printf("Illegal option %s ignored\n", tmpArgv[1]);
@@ -291,16 +298,11 @@ int main(int argc, char **argv)
 
 	dataTransfer = !zeroCopy;
 
-	numElements = batchSize * blockSize; //total blocks to be processed in a batch
-
 	std::vector<float> filterWeights(filterLength, 1.0 / filterLength); // Simple average
 
-    GenerateTestData(numElements, filterWeights, data, reference, verify);
+	GenerateTestData(numElements, filterWeights, data, reference, verify);
 
-    cl_long numBytes = numElements * sizeof(float);
-
-    float* dData;
-    float* dResult;
+	size_t numBytes = numElements * sizeof(float);
 
 	if (initOpenCl(&infoDeviceOcl, 0) == false)
 	{
@@ -350,35 +352,38 @@ int main(int argc, char **argv)
 		return false;
 	}
 
+	kernel = useOptKernel ? &optFirFilterKernel : &naiveFirFilterKernel;
+
 	//Set kernel argument
 	int cnt = 0;
 	err = clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(inputSignal));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_long), &(numElements));
+	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(size_t), &(numElements));
 	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(outputSignal));
 	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(filterData));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_uint), &(filterLength));
+	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(size_t), &(filterLength));
 	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
+
 
 	cnt = 0;
-	err  = clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(inputSignal));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_long), &(numElements));
+	err = clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(inputSignal));
+	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(size_t), &(numElements));
 	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(outputSignal));
 	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(filterData));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_uint), &(filterLength));
+	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(size_t), &(filterLength));
 	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
 
 
-	size_t localWorkSize[1] = { LOCAL_XRES };
-	size_t globalWorkSize[1];
+	size_t localWorkSize[3] = { LOCAL_XRES, 1, 1 };
+	size_t globalWorkSize[3] = { 1, 1, 1 };
 
 	globalWorkSize[0] = numElements;
 
 	cl_int status;
 
 
-#if 0
+#if 1
 	//warm-up run
-	err = clEnqueueNDRangeKernel(infoDeviceOcl.mQueue, optFirFilterKernel, 1, NULL,
+	err = clEnqueueNDRangeKernel(infoDeviceOcl.mQueue, *kernel, 1, NULL,
 		globalWorkSize, localWorkSize, 0, NULL, NULL);
 	CHECK_RESULT(err != CL_SUCCESS,
 		"clEnqueueNDRangeKernel failed with Error code = %d", err);
@@ -388,57 +393,60 @@ int main(int argc, char **argv)
 	timer t_timer;
 	timerStart(&t_timer);
 
-	//Perf test
-	if (dataTransfer)
+	for (int iter = 0; iter < iteration; iter++)
 	{
-		/**************************************************************************
-		* Send the input image data to the device
-		***************************************************************************/
-		status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue, inputSignal,
-			CL_FALSE, 0, numBytes, &data[0], 0,
-			NULL, NULL);
-		CHECK_RESULT(status != CL_SUCCESS,
-			"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-	
-		/**************************************************************************
-		* Send the filters to the device
-		***************************************************************************/
-		status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue,
-			filterData, CL_FALSE, 0, filterLength * sizeof(float),
-			&filterWeights[0], 0, NULL, NULL);
-		CHECK_RESULT(status != CL_SUCCESS,
-			"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-	}
+		//Perf test
+		if (dataTransfer)
+		{
+			/**************************************************************************
+			* Send the input image data to the device
+			***************************************************************************/
+			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue, inputSignal,
+				CL_FALSE, 0, numBytes, &data[0], 0,
+				NULL, NULL);
+			CHECK_RESULT(status != CL_SUCCESS,
+				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
+
+			/**************************************************************************
+			* Send the filters to the device
+			***************************************************************************/
+			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue,
+				filterData, CL_FALSE, 0, filterLength * sizeof(float),
+				&filterWeights[0], 0, NULL, NULL);
+			CHECK_RESULT(status != CL_SUCCESS,
+				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
+		}
 
 
- 	err = clEnqueueNDRangeKernel(infoDeviceOcl.mQueue, optFirFilterKernel, 1, NULL,
+		err = clEnqueueNDRangeKernel(infoDeviceOcl.mQueue, *kernel, 1, NULL,
 			globalWorkSize, localWorkSize, 0, NULL, NULL);
-	CHECK_RESULT(err != CL_SUCCESS,
+		CHECK_RESULT(err != CL_SUCCESS,
 			"clEnqueueNDRangeKernel failed with Error code = %d", err);
-	
-	if (dataTransfer)
-	{
-		/**************************************************************************
-		* Send the input image data to the device
-		***************************************************************************/
-		status = clEnqueueReadBuffer(infoDeviceOcl.mQueue, outputSignal,
-			CL_FALSE, 0, numBytes, &result[0], 0,
-			NULL, NULL);
-		CHECK_RESULT(status != CL_SUCCESS,
-			"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-	}
 
-	clFinish(infoDeviceOcl.mQueue);
+		if (dataTransfer)
+		{
+			/**************************************************************************
+			* Send the input image data to the device
+			***************************************************************************/
+			status = clEnqueueReadBuffer(infoDeviceOcl.mQueue, outputSignal,
+				CL_FALSE, 0, numBytes, &result[0], 0,
+				NULL, NULL);
+			CHECK_RESULT(status != CL_SUCCESS,
+				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
+		}
+		clFinish(infoDeviceOcl.mQueue);
+	}
+	//clFinish(infoDeviceOcl.mQueue);
 
 	double time_ms = timerCurrent(&t_timer);
 	time_ms = 1000 * time_ms;
 
 	if (dataTransfer)
-		printf("Average time taken per iteration with data transfer: %f msec\n", time_ms);
+		printf("Average time taken per iteration with data transfer: %f msec\n", time_ms/iteration);
 	else
-		printf("Average time taken per iteration using zero-copy buffer: %f msec\n", time_ms);
+		printf("Average time taken per iteration using zero-copy buffer: %f msec\n", time_ms/iteration);
 
-	double throughput = (numBytes * 1000.0f / (time_ms * 1024 * 1024));
+	double throughput = (numBytes * 1000.0f *iteration / (time_ms * 1024 * 1024));
 	printf("throughput: %f Mbps\n", throughput);
 
 	if (verify)
