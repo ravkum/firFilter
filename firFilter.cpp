@@ -1,14 +1,13 @@
-//#include <hip/hip_runtime.h>
 #include <iostream>
 #include <random>
 #include <time.h>
 
 #include "utils.h"
 
-#define FIR_FILTER_KERNEL_SOURCE	"firFilter.cl"
+#define FIR_FILTER_KERNEL_SOURCE		"firFilter.cl"
 #define NAIVE_FIR_FILTER_KERNEL			"NaiveMovingAverageFilter"
 #define OPT_FIR_FILTER_KERNEL			"MovingAverageFilter"
-#define LOCAL_XRES					256
+#define LOCAL_XRES						256
 
 // Helper function to generate test data for this exercise
 void GenerateTestData(size_t const numElements,
@@ -73,72 +72,6 @@ void CompareData(std::vector<float> const& expected, std::vector<float> const& a
         printf("Test Passed! All values match.\n");
 }
 
-float cFilterWeights[1024];
-
-#if 0
-template <int filterLength>
-__global__ void NaiveMovingAverageFilter(size_t const numElements,
-					 float const* const __restrict__ input,
-					 float      * const __restrict__ output)
-{
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (idx >= numElements)
-	return;
-
-    int const halfFilterLength = filterLength / 2;
-
-    size_t windowIdx = idx - halfFilterLength;
-    float  value = 0.0f;
-
-    for(size_t filterIdx = 0; filterIdx < filterLength; filterIdx++, windowIdx++)
-    {
-	float sample = (0 <= windowIdx && windowIdx < numElements) ? input[windowIdx] : 0.0f;
-	value += sample * cFilterWeights[filterIdx];
-    }
-    output[idx] = value;
-}
-
-
-template <int filterLength>
-__global__ void MovingAverageFilter(size_t const numElements,
-				    float const* const __restrict__ input,
-				    float      * const __restrict__ output)
-{
-    int const halfFilterLength = filterLength / 2;
-
-    HIP_DYNAMIC_SHARED(float, sInput);
-
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    sInput[threadIdx.x + halfFilterLength] = (idx < numElements) ? input[idx] : 0.0f;
-
-    if (threadIdx.x < halfFilterLength)
-    {
-	sInput[threadIdx.x] = (idx - halfFilterLength > 0) ? input[idx - halfFilterLength] : 0.0f;
-    }
-
-    if (threadIdx.x >= blockDim.x - halfFilterLength)
-    {
-	sInput[threadIdx.x + 2*halfFilterLength] = (idx + halfFilterLength< numElements) ? input[idx + halfFilterLength] : 0.0f;
-    }
-
-    __syncthreads();
-
-    size_t windowIdx = idx - halfFilterLength;
-
-    if (idx >= numElements)
-	return;
-
-    float value = 0.0f;
-    for(int sIdx = 0; sIdx < filterLength; sIdx++)
-    {
-	value += cFilterWeights[sIdx]*sInput[threadIdx.x + sIdx];
-    }
-    output[idx] = value;
-}
-#endif
-
 bool buildKernels(cl_context oclContext, cl_device_id oclDevice, cl_kernel *naiveFirFilterKernel, cl_kernel *optFirFilterKernel, cl_uint filterLength)
 {
 	cl_int err = CL_SUCCESS;
@@ -202,7 +135,6 @@ void usage(const char *prog)
 	printf("\n\t[-zeroCopy (0 | 1)] //0 (default) - Device buffer, 1 - zero copy buffer\n\t[-filtSize (Tap size)]\n\t");
 	printf("\n\t[-numElements (220000)]\n\t");
 	printf("\n\t[-opt (0 | 1)]\n\t");
-	printf("\n\t[-batchSize (number of blocks per batch: how much data to be processed in an interval)]\n\t");
 	printf("\n\t[-verify (0 | 1]\n\t");
 	printf("]\n\t[-h (help)]\n\n");
 }
@@ -222,9 +154,6 @@ int main(int argc, char **argv)
 
 	size_t filterLength = 335;
 	size_t numElements = 2200000;// 600 * 1024 * 1024;
-
-	int x1 = sizeof(size_t);
-	int x2 = sizeof(float);
 
 	bool verify = false;
 
@@ -462,57 +391,5 @@ int main(int argc, char **argv)
 	clReleaseMemObject(outputSignal);
 	clReleaseMemObject(filterData);
 	
-#if 0
-    HIP_CHECK(hipMalloc(&dData,   numBytes));
-    HIP_CHECK(hipMalloc(&dResult, numBytes));
-
-    HIP_CHECK(hipMemcpy(dData, data.data(), numBytes, hipMemcpyHostToDevice));
-    HIP_CHECK(hipMemcpyToSymbol(HIP_SYMBOL(cFilterWeights),
-			       filterWeights.data(),
-			       filterWeights.size() * sizeof(float)));
-
-    dim3 blockDim(256, 1, 1);
-    dim3 gridDim((numElements + blockDim.x - 1) / blockDim.x, 1, 1);
-
-    hipLaunchKernelGGL(NaiveMovingAverageFilter<filterLength>,
-		       gridDim,
-		       blockDim,
-		       0,
-		       0,
-		       numElements,
-		       dData,
-		       dResult);
-
-    HIP_CHECK(hipDeviceSynchronize());
-
-    HIP_CHECK(hipDeviceSynchronize());
-    HIP_CHECK(hipGetLastError());
-
-    HIP_CHECK(hipMemcpy(result.data(), dResult, numBytes, hipMemcpyDeviceToHost));
-
-    CompareData(reference, result, filterWeights.size());
-
-    HIP_CHECK(hipMemset(dResult, 0, numBytes));
-
-    size_t dynamicSharedMemoryBytes = sizeof(float) * (blockDim.x + filterWeights.size() - 1);
-
-    hipLaunchKernelGGL(MovingAverageFilter<filterLength>,
-		       gridDim,
-		       blockDim,
-		       dynamicSharedMemoryBytes,
-		       0,
-		       numElements,
-		       dData,
-		       dResult);
-
-    HIP_CHECK(hipDeviceSynchronize());
-    HIP_CHECK(hipGetLastError());
-
-    HIP_CHECK(hipMemcpy(result.data(), dResult, numBytes, hipMemcpyDeviceToHost));
-    CompareData(reference, result, filterWeights.size());
-
-    HIP_CHECK(hipFree(dData));
-    HIP_CHECK(hipFree(dResult));
-#endif
     return 0;
 }

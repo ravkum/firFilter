@@ -157,7 +157,8 @@ bool initOpenCl(DeviceInfo *infoDeviceOcl, cl_uint deviceNum)
     infoDeviceOcl->mCtx = clCreateContext(props, 1, &infoDeviceOcl->mDevice, NULL, NULL, &err);
     CHECK_RESULT(err != CL_SUCCESS, "clCreateContext failed. Err code = %d", err);
 
-    infoDeviceOcl->mQueue = clCreateCommandQueue(infoDeviceOcl->mCtx, infoDeviceOcl->mDevice, CL_QUEUE_PROFILING_ENABLE, &err);
+    //infoDeviceOcl->mQueue = clCreateCommandQueue(infoDeviceOcl->mCtx, infoDeviceOcl->mDevice, CL_QUEUE_PROFILING_ENABLE, &err);
+	infoDeviceOcl->mQueue = clCreateCommandQueue(infoDeviceOcl->mCtx, infoDeviceOcl->mDevice, 0, &err);
     CHECK_RESULT(err != CL_SUCCESS, "clCreateCommandQueue failed. Err code = %d", err);
     return true;
 }
