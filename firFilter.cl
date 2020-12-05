@@ -82,7 +82,7 @@ void MovingAverageFilter(
 
 	if (threadIdx < halfFilterLength)
     {
-		sInput[threadIdx] = ((int)idx - (int)halfFilterLength > 0) ? input[idx - halfFilterLength] : 0.0f;
+		sInput[threadIdx] = ((int)idx - (int)halfFilterLength >= 0) ? input[idx - halfFilterLength] : 0.0f;
     }
 
     if (threadIdx >= blockDimx - halfFilterLength)

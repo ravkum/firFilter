@@ -221,7 +221,10 @@ int main(int argc, char **argv)
 	bool useOptKernel = true;
 
 	size_t filterLength = 335;
-	size_t numElements = 2120000;// 600 * 1024 * 1024;
+	size_t numElements = 2200000;// 600 * 1024 * 1024;
+
+	int x1 = sizeof(size_t);
+	int x2 = sizeof(float);
 
 	bool verify = false;
 
