@@ -288,22 +288,12 @@ int main(int argc, char **argv)
 
 	//Set kernel argument
 	int cnt = 0;
-	err = clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(inputSignal));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(size_t), &(numElements));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(outputSignal));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(cl_mem), &(filterData));
-	err |= clSetKernelArg(naiveFirFilterKernel, cnt++, sizeof(size_t), &(filterLength));
+	err  = clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(inputSignal));
+	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(numElements));
+	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(outputSignal));
+	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(filterData));
+	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(filterLength));
 	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
-
-
-	cnt = 0;
-	err = clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(inputSignal));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(size_t), &(numElements));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(outputSignal));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(cl_mem), &(filterData));
-	err |= clSetKernelArg(optFirFilterKernel, cnt++, sizeof(size_t), &(filterLength));
-	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
-
 
 	size_t localWorkSize[3] = { LOCAL_XRES, 1, 1 };
 	size_t globalWorkSize[3] = { 1, 1, 1 };
