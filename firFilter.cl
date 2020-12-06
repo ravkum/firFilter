@@ -27,9 +27,11 @@ THE POSSIBILITY OF SUCH DAMAGE.
 __kernel 
 __attribute__((reqd_work_group_size(LOCAL_XRES, 1, 1)))
 void NaiveMovingAverageFilter(
-				    __global float *input,
+				    __global float *input_r,
+					__global float *input_i,
 					size_t numElements,
-				    __global float *output,
+				    __global float *output_r,
+					__global float *output_i,
 					__constant float *cFilterWeights, 
 					size_t filterLength)
 
@@ -46,31 +48,43 @@ void NaiveMovingAverageFilter(
     size_t halfFilterLength = filterLength / 2;
 
     size_t windowIdx = idx - halfFilterLength;
-    float  value = 0.0f;
+    float  value_r = 0.0f;
+	float  value_i = 0.0f;
+	float fw = 0.0f;
+	float sample_r, sample_i;
 
     for(size_t filterIdx = 0; filterIdx < filterLength; filterIdx++, windowIdx++)
     {
-		float sample = (0 <= windowIdx && windowIdx < numElements) ? input[windowIdx] : 0.0f;
-		value += sample * cFilterWeights[filterIdx];
+		fw = cFilterWeights[filterIdx];
+
+		sample_r = (0 <= windowIdx && windowIdx < numElements) ? input_r[windowIdx] : 0.0f;
+		value_r += sample_r * fw;
+
+		sample_i = (0 <= windowIdx && windowIdx < numElements) ? input_i[windowIdx] : 0.0f;
+		value_i += sample_i * fw;
     }
 
-    output[idx] = value;
+    output_r[idx] = value_r;
+	output_i[idx] = value_i;
 }
 
 
 __kernel 
 __attribute__((reqd_work_group_size(LOCAL_XRES, 1, 1)))
 void MovingAverageFilter(
-				    __global float *input,
+				    __global float *input_r,
+					__global float *input_i,
 					size_t numElements,
-				    __global float *output,
+				    __global float *output_r,
+					__global float *output_i,
 					__constant float *cFilterWeights, 
 					size_t filterLength)
 
 {
     size_t halfFilterLength = filterLength / 2;
 
-	__local float sInput[(LOCAL_XRES + TAP_SIZE -1)];
+	__local float sInput_r[(LOCAL_XRES + TAP_SIZE -1)];
+	__local float sInput_i[(LOCAL_XRES + TAP_SIZE -1)];
 
     size_t blockIdx = get_group_id(0);
 	size_t blockDimx = get_local_size(0);
@@ -78,16 +92,19 @@ void MovingAverageFilter(
 
     size_t idx = blockIdx * blockDimx + threadIdx;
 
-    sInput[threadIdx + halfFilterLength] = (idx < numElements) ? input[idx] : 0.0f;
+    sInput_r[threadIdx + halfFilterLength] = (idx < numElements) ? input_r[idx] : 0.0f;
+	sInput_i[threadIdx + halfFilterLength] = (idx < numElements) ? input_i[idx] : 0.0f;
 
 	if (threadIdx < halfFilterLength)
     {
-		sInput[threadIdx] = ((int)idx - (int)halfFilterLength >= 0) ? input[idx - halfFilterLength] : 0.0f;
+		sInput_r[threadIdx] = ((int)idx - (int)halfFilterLength >= 0) ? input_r[idx - halfFilterLength] : 0.0f;
+		sInput_i[threadIdx] = ((int)idx - (int)halfFilterLength >= 0) ? input_i[idx - halfFilterLength] : 0.0f;
     }
 
     if (threadIdx >= blockDimx - halfFilterLength)
     {
-		sInput[threadIdx + 2*halfFilterLength] = (idx + halfFilterLength < numElements) ? input[idx + halfFilterLength] : 0.0f;
+		sInput_r[threadIdx + 2*halfFilterLength] = (idx + halfFilterLength < numElements) ? input_r[idx + halfFilterLength] : 0.0f;
+		sInput_i[threadIdx + 2*halfFilterLength] = (idx + halfFilterLength < numElements) ? input_i[idx + halfFilterLength] : 0.0f;
     }
 
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -95,10 +112,16 @@ void MovingAverageFilter(
     if (idx >= numElements)
 		return;
 
-    float value = 0.0f;
+    float value_r = 0.0f;
+	float value_i = 0.0f;
+	float fw = 0.0f;
     for(size_t sIdx = 0; sIdx < filterLength; sIdx++)
     {
-		value += cFilterWeights[sIdx] * sInput[threadIdx + sIdx];
+		fw = cFilterWeights[sIdx];
+		value_r += fw * sInput_r[threadIdx + sIdx];
+		value_i += fw * sInput_i[threadIdx + sIdx];
     }
-    output[idx] = value;
+
+    output_r[idx] = value_r;
+	output_i[idx] = value_i;
 }
