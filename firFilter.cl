@@ -47,7 +47,7 @@ void NaiveMovingAverageFilter(
 
     size_t halfFilterLength = filterLength / 2;
 
-    size_t windowIdx = idx - halfFilterLength;
+    long windowIdx = idx - halfFilterLength;
     float  value_r = 0.0f;
 	float  value_i = 0.0f;
 	float fw = 0.0f;
