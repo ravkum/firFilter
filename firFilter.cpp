@@ -12,45 +12,44 @@
 // Helper function to generate test data for this exercise
 void GenerateTestData(size_t const numElements,
 		      std::vector<float> const& filterWeights,
-		      std::vector<float>& testData_r, std::vector<float>& testData_i,
-		      std::vector<float>& reference_r, std::vector<float>& reference_i, bool verify)
+		      std::vector<float>& testData, 
+		      std::vector<float>& reference, bool verify)
 {
-    testData_r.resize(numElements);
-	testData_i.resize(numElements);
-    
-	reference_r.resize(numElements);
-	reference_i.resize(numElements);
+	int filterLength = filterWeights.size();
+	long const halfFilterLength = filterLength / 2;
+	size_t paddedLength = numElements + filterLength - 1;
 
+    testData.resize(2*paddedLength); //Real and imaginary data side-by-side in same array + Padded data
+	reference.resize(2*numElements); //Real and imaginary data side-by-side in same array;
+	
     std::default_random_engine            generator;
     std::uniform_real_distribution<float> uniform(0.0f, 1.0f);
 
-    for(size_t i = 0; i < numElements; i++)
+    for(size_t i = 2*halfFilterLength; i < 2*numElements; i++)
     {
-		testData_r[i] = uniform(generator);
-		testData_i[i] = uniform(generator);
-    }
+		testData[i] = uniform(generator);
+	}
 
 	if (verify) {
-		long const filterLength = filterWeights.size();
-		long const halfFilterLength = filterLength / 2;
-
 		for (size_t i = 0; i < numElements; i++)
 		{
-			long windowIdx = i - halfFilterLength;
+			long windowIdx = 2 * i;//2 * i - halfFilterLength;
 			float  value_r = 0.0f;
 			float  value_i = 0.0f;
 
-			for (int filterIdx = 0; filterIdx < filterLength; filterIdx++, windowIdx++)
+			for (size_t filterIdx = 0; filterIdx < filterLength; filterIdx++, windowIdx+=2)
 			{
-				float sample_r = (0 <= windowIdx && windowIdx < numElements) ? testData_r[windowIdx] : 0.0f;
+				//float sample_r = (0 <= windowIdx && windowIdx < 2*numElements) ? testData[windowIdx+0] : 0.0f;
+				float sample_r = testData[windowIdx + 0];
 				value_r += sample_r * filterWeights[filterIdx];
 
-				float sample_i = (0 <= windowIdx && windowIdx < numElements) ? testData_i[windowIdx] : 0.0f;
+				//float sample_i = (-1 <= windowIdx && windowIdx < (2*numElements)-1) ? testData[windowIdx+1] : 0.0f;
+				float sample_i = testData[windowIdx + 1];
 				value_i += sample_i * filterWeights[filterIdx];
 			}
 
-			reference_r[i] = value_r;
-			reference_i[i] = value_i;
+			reference[2*i+0] = value_r;
+			reference[2*i+1] = value_i;
 		}
 	}
 }
@@ -61,29 +60,22 @@ bool AlmostEqual(float ref, float value, size_t ulp)
 }
 
 // Helper function to compare test data for this exercise
-void CompareData(std::vector<float> const& expected_r, std::vector<float> const& expected_i, 
-				std::vector<float> const& actual_r, std::vector<float> const& actual_i, int toleranceInUlp)
+void CompareData(std::vector<float> const& expected, 
+				std::vector<float> const& actual, int toleranceInUlp)
 {
-    size_t const numElements = expected_r.size();
+    size_t const numElements = expected.size();	//will match both real and imaginary data
 
     bool pass = true;
     for(size_t i = 0; i < numElements; i++)
     {
-        if(!AlmostEqual(expected_r[i], actual_r[i], toleranceInUlp))
+        if(!AlmostEqual(expected[i], actual[i], toleranceInUlp))
         {
-            std::cout << "Mismatch at index " << i << "!\nExpected value: " << expected_r[i]
-                      << "\nActual value: " << actual_r[i] << std::endl;
+            std::cout << "Mismatch at index " << i << "!\nExpected value: " << expected[i]
+                      << "\nActual value: " << actual[i] << std::endl;
             pass = false;
             break;
         }
 
-		if (!AlmostEqual(expected_i[i], actual_i[i], toleranceInUlp))
-		{
-			std::cout << "Mismatch at index " << i << "!\nExpected value: " << expected_i[i]
-				<< "\nActual value: " << actual_i[i] << std::endl;
-			pass = false;
-			break;
-		}
     }
 
     if(pass)
@@ -161,8 +153,8 @@ int main(int argc, char **argv)
 {
 	DeviceInfo infoDeviceOcl;
 	
-	cl_mem inputSignal_r, inputSignal_i;	//real and imaginary components of the input  data in separate arrays
-	cl_mem outputSignal_r, outputSignal_i;	//real and imaginary components of the output data in separate arrays
+	cl_mem inputSignal;	//real and imaginary components of the input  data in separate arrays
+	cl_mem outputSignal;	//real and imaginary components of the output data in separate arrays
 	cl_mem  filterData;
 	cl_int err;
 
@@ -175,15 +167,13 @@ int main(int argc, char **argv)
 	int iteration = 1;
 
 	size_t filterLength = 335;
-	size_t numElements = 2200000;// 600 * 1024 * 1024;
+	size_t numElements = 512000;// 600 * 1024 * 1024;
 
 	bool verify = false;
 
-	std::vector<float> data_r, data_i;
-	std::vector<float> reference_r, reference_i;
-	std::vector<float> result_r(numElements, 0.0f);
-	std::vector<float> result_i(numElements, 0.0f);
-
+	std::vector<float> data;
+	std::vector<float> reference;
+	std::vector<float> result(2*numElements, 0.0f); //Real and imaginary side-by-side in the same array
 	/***************************************************************************
 	* Processing the command line arguments                                   *
 	**************************************************************************/
@@ -233,7 +223,6 @@ int main(int argc, char **argv)
 			usage(argv[0]);
 			exit(1);
 		}
-
 		else
 		{
 			printf("Illegal option %s ignored\n", tmpArgv[1]);
@@ -254,9 +243,10 @@ int main(int argc, char **argv)
 
 	std::vector<float> filterWeights(filterLength, 1.0 / filterLength); // Simple average
 
-	GenerateTestData(numElements, filterWeights, data_r, data_i, reference_r, reference_i, verify);
+	GenerateTestData(numElements, filterWeights, data, reference, verify);
 
 	size_t numBytes = numElements * sizeof(float);
+	size_t paddedNumBytes = (numElements + filterLength - 1) * sizeof(float);
 
 	if (initOpenCl(&infoDeviceOcl, 0) == false)
 	{
@@ -266,24 +256,14 @@ int main(int argc, char **argv)
 
 	if (zeroCopy)
 	{
-		inputSignal_r = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-			numBytes,
-			&data_r[0], &err);
+		inputSignal = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+			2*paddedNumBytes,
+			&data[0], &err);
 		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
 
-		inputSignal_i = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-			numBytes,
-			&data_i[0], &err);
-		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
-
-		outputSignal_r = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-			numBytes,
-			&result_r[0], &err);
-		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
-
-		outputSignal_i = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-			numBytes,
-			&result_i[0], &err);
+		outputSignal = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
+			2*numBytes,
+			&result[0], &err);
 		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
 
 		filterData = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
@@ -293,23 +273,13 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		inputSignal_r = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY,
-			numBytes,
+		inputSignal = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY,
+			2*paddedNumBytes,
 			NULL, &err);
 		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
 
-		inputSignal_i = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_READ_ONLY,
-			numBytes,
-			NULL, &err);
-		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
-
-		outputSignal_r = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY,
-			numBytes,
-			NULL, &err);
-		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
-
-		outputSignal_i = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY,
-			numBytes,
+		outputSignal = clCreateBuffer(infoDeviceOcl.mCtx, CL_MEM_WRITE_ONLY,
+			2*numBytes,
 			NULL, &err);
 		CHECK_RESULT(err != CL_SUCCESS, "clCreateBuffer failed with %d\n", err);
 
@@ -330,11 +300,9 @@ int main(int argc, char **argv)
 
 	//Set kernel argument
 	int cnt = 0;
-	err  = clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(inputSignal_r));
-	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(inputSignal_i));
+	err  = clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(inputSignal));
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(numElements));
-	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(outputSignal_r));
-	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(outputSignal_i));
+	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(outputSignal));
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(filterData));
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(filterLength));
 	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
@@ -346,6 +314,17 @@ int main(int argc, char **argv)
 
 	cl_int status;
 
+	if (dataTransfer) {
+		/* FIlter is not changing. So send them once in the beginning of the pipeline*/
+		/**************************************************************************
+		* Send the filters to the device
+		***************************************************************************/
+		status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue,
+			filterData, CL_TRUE, 0, filterLength * sizeof(float),
+			&filterWeights[0], 0, NULL, NULL);
+		CHECK_RESULT(status != CL_SUCCESS,
+			"Error in clEnqueueWriteBuffer. Status: %d\n", status);
+	}
 
 #if 1
 	//warm-up run
@@ -367,26 +346,11 @@ int main(int argc, char **argv)
 			/**************************************************************************
 			* Send the input image data to the device
 			***************************************************************************/
-			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue, inputSignal_r,
-				CL_FALSE, 0, numBytes, &data_r[0], 0,
+			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue, inputSignal,
+				CL_FALSE, 0, 2*paddedNumBytes, &data[0], 0,
 				NULL, NULL);
 			CHECK_RESULT(status != CL_SUCCESS,
-				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-
-			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue, inputSignal_i,
-				CL_FALSE, 0, numBytes, &data_i[0], 0,
-				NULL, NULL);
-			CHECK_RESULT(status != CL_SUCCESS,
-				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-
-			/**************************************************************************
-			* Send the filters to the device
-			***************************************************************************/
-			status = clEnqueueWriteBuffer(infoDeviceOcl.mQueue,
-				filterData, CL_FALSE, 0, filterLength * sizeof(float),
-				&filterWeights[0], 0, NULL, NULL);
-			CHECK_RESULT(status != CL_SUCCESS,
-				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
+				"Error in clEnqueueWriteBuffer. Status: %d\n", status);			
 		}
 
 
@@ -395,26 +359,20 @@ int main(int argc, char **argv)
 		CHECK_RESULT(err != CL_SUCCESS,
 			"clEnqueueNDRangeKernel failed with Error code = %d", err);
 
-		if (dataTransfer)
+ 		if (dataTransfer)
 		{
 			/**************************************************************************
 			* Send the input image data to the device
 			***************************************************************************/
-			status = clEnqueueReadBuffer(infoDeviceOcl.mQueue, outputSignal_r,
-				CL_FALSE, 0, numBytes, &result_r[0], 0,
-				NULL, NULL);
-			CHECK_RESULT(status != CL_SUCCESS,
-				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
-
-			status = clEnqueueReadBuffer(infoDeviceOcl.mQueue, outputSignal_i,
-				CL_FALSE, 0, numBytes, &result_i[0], 0,
+			status = clEnqueueReadBuffer(infoDeviceOcl.mQueue, outputSignal,
+				CL_FALSE, 0, 2*numBytes, &result[0], 0,
 				NULL, NULL);
 			CHECK_RESULT(status != CL_SUCCESS,
 				"Error in clEnqueueWriteBuffer. Status: %d\n", status);
 		}
+
 		clFinish(infoDeviceOcl.mQueue);
 	}
-	//clFinish(infoDeviceOcl.mQueue);
 
 	double time_ms = timerCurrent(&t_timer);
 	time_ms = 1000 * time_ms;
@@ -424,19 +382,17 @@ int main(int argc, char **argv)
 	else
 		printf("Average time taken per iteration using zero-copy buffer: %f msec\n", time_ms/iteration);
 
-	double throughput = (numBytes * 2 * 1000.0f * iteration / (time_ms * 1024 * 1024));
+	double throughput = (numBytes * 2 * 1000.0f * iteration / (time_ms * 1024 * 1024));	//Multiply by 2 for real and imaginary data 
 	printf("throughput: %f Mbps\n", throughput);
 
 	if (verify)
-		CompareData(reference_r, reference_i, result_r, result_i, filterWeights.size());
+		CompareData(reference, result, filterWeights.size());
 
 	//////////////////////
 	//Clean up memory
 	//////////////////////
-	clReleaseMemObject(inputSignal_r);
-	clReleaseMemObject(inputSignal_i);
-	clReleaseMemObject(outputSignal_r);
-	clReleaseMemObject(outputSignal_i);
+	clReleaseMemObject(inputSignal);
+	clReleaseMemObject(outputSignal);
 	clReleaseMemObject(filterData);
 	
     return 0;
