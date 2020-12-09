@@ -94,6 +94,7 @@ void MovingAverageFilter(
 	int for_loop_iter = (local_samples_to_Read/LOCAL_XRES);
 	int extra_reads = local_samples_to_Read - (for_loop_iter * LOCAL_XRES);
 
+	#pragma unroll 2 //This is 2 for 335 filter size, will be less for small sizes. Curently hardcoding
 	for (int i = 0; i < for_loop_iter; i++)	{
 		local_Input_r[threadIdx + i * LOCAL_XRES] = (2*((i * LOCAL_XRES) + idx) < paddedSize) ? input[2*((i * LOCAL_XRES) + idx)] : 0.0f;
 		local_Input_i[threadIdx + i * LOCAL_XRES] = (2*((i * LOCAL_XRES) + idx) + 1 < paddedSize) ? input[2*((i * LOCAL_XRES) + idx) + 1] : 0.0f;
@@ -113,11 +114,14 @@ void MovingAverageFilter(
     float value_r = 0.0f;
 	float value_i = 0.0f;
 	float fw = 0.0f;
+	
+	#pragma unroll
     for(int sIdx = 0; sIdx < filterLength; sIdx++)
     {
 		fw = cFilterWeights[sIdx];
-		value_r += fw * local_Input_r[threadIdx + sIdx];
-		value_i += fw * local_Input_i[threadIdx + sIdx];
+		
+		value_r = mad(local_Input_r[threadIdx + sIdx], fw, value_r);
+		value_i = mad(local_Input_i[threadIdx + sIdx], fw, value_i);		
     }
 
 	output[2*idx] = value_r;
