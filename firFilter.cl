@@ -30,13 +30,14 @@ void NaiveMovingAverageFilter(
 				    __global float *input,
 					size_t numElements,
 				    __global float *output,
-					__constant float *cFilterWeights, 
-					size_t filterLength)
+					__constant float *cFilterWeights)
 
 {
 	size_t blockIdx = get_group_id(0);
 	size_t blockDimx = get_local_size(0);
 	size_t threadIdx = get_local_id(0);
+
+	size_t filterLength = TAP_SIZE;
 
 	long idx = (blockIdx * blockDimx + threadIdx);
 
@@ -74,21 +75,22 @@ void MovingAverageFilter(
 				    __global float *input,
 					size_t numElements,
 				    __global float *output,
-					__constant float *cFilterWeights, 
-					size_t filterLength)
+					__constant float *cFilterWeights)
 
 {
     //int halfFilterLength = filterLength / 2;
 
 	__local float local_Input_r[(LOCAL_XRES + TAP_SIZE - 1)];
 	__local float local_Input_i[(LOCAL_XRES + TAP_SIZE - 1)];
+	
+    size_t threadIdx = get_local_id(0);
+	long idx = get_global_id(0);
 
-    size_t blockIdx = get_group_id(0);
-	size_t blockDimx = get_local_size(0);
-	size_t threadIdx = get_local_id(0);
-
+	size_t filterLength = TAP_SIZE;
+	
+	
 	long paddedSize = 2 * (numElements + filterLength - 1);
-    long idx = (blockIdx * blockDimx + threadIdx); 
+    
 	
 	int local_samples_to_Read = LOCAL_XRES + TAP_SIZE - 1;
 	int for_loop_iter = (local_samples_to_Read/LOCAL_XRES);
@@ -119,7 +121,7 @@ void MovingAverageFilter(
     for(int sIdx = 0; sIdx < filterLength; sIdx++)
     {
 		fw = cFilterWeights[sIdx];
-		
+				
 		value_r = mad(local_Input_r[threadIdx + sIdx], fw, value_r);
 		value_i = mad(local_Input_i[threadIdx + sIdx], fw, value_i);		
     }

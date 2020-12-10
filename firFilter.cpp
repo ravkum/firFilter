@@ -169,7 +169,7 @@ int main(int argc, char **argv)
 	size_t filterLength = 335;
 	size_t numElements = 512000;// 600 * 1024 * 1024;
 
-	bool verify = false;
+	bool verify = true;
 
 	std::vector<float> data;
 	std::vector<float> reference;
@@ -304,7 +304,6 @@ int main(int argc, char **argv)
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(numElements));
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(outputSignal));
 	err |= clSetKernelArg(*kernel, cnt++, sizeof(cl_mem), &(filterData));
-	err |= clSetKernelArg(*kernel, cnt++, sizeof(size_t), &(filterLength));
 	CHECK_RESULT(err != CL_SUCCESS, "clSetKernelArg failed with Error code = %d", err);
 
 	size_t localWorkSize[3] = { LOCAL_XRES, 1, 1 };
