@@ -36,16 +36,15 @@ Build:
   
  
 Run:
-Usage: firFilter.exe
+Usage: firfilter.exe
 
         [-zeroCopy (0 | 1)] //0 (default) - Device buffer, 1 - zero copy buffer
-        [-numElements <int value> (default 245760)]
-        [-f1 <int value> (filter1 TAP size - default 335)]
-        [-f2 <int value> (filter2 TAP size - default 29)]
-        [-iter <int value> (Number of times the piepeline shold be run)]
+        [-filtSize (Tap size)]
+        [-numElements (220000)]
+	[-iter (10) number of times the pipeline should run]
         [-verify (0 | 1]
         [-h (help)]
 
 Example:
 
-                firFilter.exe -numElements 256000 -f1 335 -f2 29 -verify 1 -iter 10
+                firFilter.exe -numElements 256000 -filtSize 335 -verify 1 -iter 10

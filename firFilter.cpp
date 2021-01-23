@@ -143,10 +143,10 @@ void usage(const char *prog)
 {
 	printf("Usage: %s \n\t", prog);
 	printf("\n\t[-zeroCopy (0 | 1)] //0 (default) - Device buffer, 1 - zero copy buffer\n\t[-filtSize (Tap size)]\n\t");
-	printf("\n\t[-numElements (220000)]\n\t");
-	printf("\n\t[-opt (0 | 1)]\n\t");
-	printf("\n\t[-verify (0 | 1]\n\t");
-	printf("]\n\t[-h (help)]\n\n");
+	printf("[-numElements (220000)]\n\t");
+	printf("[-iter(10) number of times the pipeline should run]\n\t");
+	printf("[-verify (0 | 1]\n\t");
+	printf("[-h (help)]\n\n");
 }
 
 int main(int argc, char **argv)
