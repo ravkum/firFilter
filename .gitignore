@@ -2,3 +2,8 @@ Debug*
 x64*
 *.VC
 *.VC.db
+bin/
+build/
+*.opendb
+*.VC
+*.user
